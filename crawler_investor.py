@@ -3,6 +3,7 @@ import datetime
 import time
 import os
 import ssl
+import investors_merge
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -39,6 +40,7 @@ def next_month(yyyymmdd):
   next_yyyymmdd = int(next_month.strftime("%Y%m%d"))
   return next_yyyymmdd
 
+
 def find_last_day(investors):
     path0 = "./{}".format(investors)
     yyyy = sorted([dir for dir in os.listdir(path0) if not dir.startswith('.')])[-1]
@@ -50,6 +52,21 @@ def find_last_day(investors):
     last_file = sorted([file for file in os.listdir(path2) if not file.startswith('.')])[-1]
     last_day = int(os.path.splitext(last_file)[0])
     return last_day
+
+def find_last_day_all():
+    last_list = []
+    for investors in ['Dealers', 'Trust', 'Foriegn']:
+        path0 = "./{}".format(investors)
+        yyyy = sorted([dir for dir in os.listdir(path0) if not dir.startswith('.')])[-1]
+
+        path1 = "./{}/{}".format(investors, yyyy)
+        mm = sorted([dir for dir in os.listdir(path1) if not dir.startswith('.')])[-1]
+
+        path2 = "./{}/{}/{}".format(investors, yyyy, mm)
+        last_file = sorted([file for file in os.listdir(path2) if not file.startswith('.')])[-1]
+        last_day = int(os.path.splitext(last_file)[0])
+        last_list.append(last_day)
+    return max(last_list)
 
 def geturl(date, investors):
     if investors == "Dealers":
@@ -101,7 +118,30 @@ def crawler(investors):
             print('{}{}無資料'.format(investors, date))
         date = next_day(date)
 
+def crawler_and_update():
+    date = next_day(find_last_day_all())
+    today = int(datetime.date.today().strftime("%Y%m%d"))
+
+    while date <= today:
+        yyyy, mm, dd = str_yyyy_mm_dd(date)
+        for investors in ['Dealers', 'Trust', 'Foriegn']:
+            url = geturl(date, investors)
+            response = requests.get(url)
+
+            makedir(date, investors)
+            filename = "./{}/{}/{}/{}.csv".format(investors, yyyy, mm, date)
+
+            if "證券代號" in response.text:
+                with open(filename, 'w', encoding = "utf-8") as f:
+                    f.write(response.text)
+                print('{}{}已下載完畢'.format(investors, filename))
+                time.sleep(7)
+            else:
+                print('{}{}無資料'.format(investors, date))
+
+        investors_merge.update_investor(date)
+
+        date = next_day(date)
+
 if __name__ == '__main__':
-    crawler("Dealers")
-    crawler("Trust")
-    crawler("Foriegn")
+    crawler_and_update()

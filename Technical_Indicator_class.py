@@ -2,6 +2,11 @@ import datetime
 import pandas as pd
 from talib import abstract
 import os
+import crawler_investor
+import crawler_margin
+import crawler_margin_financing
+import crawler_futures
+import stock50
 
 def sma(series, d):
     return series.rolling(d, min_periods = d).mean()
@@ -139,12 +144,9 @@ def split2yyyymmdd(stryyyymmdd):
     yyyymmdd = int(date.strftime("%Y%m%d"))
     return yyyymmdd
 
-def transpercent2num(change):
-    return float(str(change).split('%')[0])
-
 def transchange2class(change):
-    high = 1.8
-    mild = 1
+    high = 1.5
+    mild = 0.4
     if change < -high:
         return 0
     if change >= -high and change < -mild:
@@ -161,115 +163,83 @@ def transchange2class(change):
         return 6
 
 def transclose2class3(change):
-    if change >= -10 and change < -0.5:
+    cut = 0.5
+    if change < -cut:
         return 0
-    elif change >= 0.5 and change < 10:
+    elif change >= cut:
         return 2
     else:
         return 1
 
-def futures():
-    NI225 = pd.read_csv('./futures/日經225指數.csv', thousands = ",")
-    NI225 = NI225.rename(columns={"日期": "date", "收市": "NI225", "更改%": "NI225_change"})
+def TAIEX2class(change):
+    high = 0.8
+    mild = 0.4
+    low = 0.1
+    if change < -high:
+        return 0
+    if change >= -high and change < -mild:
+        return 1
+    if change >= -mild and change < -low:
+        return 2
+    if change >= -low and change < low:
+        return 3
+    if change >= low and change < mild:
+        return 4
+    if change >= mild and change < high:
+        return 5
+    if change > high:
+        return 6
 
-    SP500 = pd.read_csv('./futures/標準普爾500.csv', thousands = ",")
-    SP500 = SP500.rename(columns={"日期": "date", "收市": "SP500", "更改%": "SP500_change"})
+def TAIEX2class3(change):
+    cut = 0.33
+    if change < -cut:
+        return 0
+    elif change >= cut:
+        return 2
+    else:
+        return 1
 
-    Pl = pd.read_csv('./futures/白金.csv', thousands = ",")
-    Pl = Pl.rename(columns={"日期": "date", "白金": "Pl", "漲跌幅": "Pl_change"})
+def futures_FX_index():
+    futures = pd.read_csv('./futures/futures.csv', thousands = ",")
 
-    Gc = pd.read_csv('./futures/黃金.csv', thousands = ",")
-    Gc = Gc.rename(columns={"日期": "date", "黃金": "Gc", "漲跌幅": "Gc_change"})
-
-    Si = pd.read_csv('./futures/銀.csv', thousands = ",")
-    Si = Si.rename(columns={"日期": "date", "收市": "Si", "更改%": "Si_change"})
-
-    Hg = pd.read_csv('./futures/銅.csv', thousands = ",")
-    Hg = Hg.rename(columns={"日期": "date", "收市": "Hg", "更改%": "Hg_change"})
-
-    Ng = pd.read_csv('./futures/天然氣.csv', thousands = ",")
-    Ng = Ng.rename(columns={"日期": "date", "收市": "Ng", "更改%": "Ng_change"})
-
-    futures_dic = {'NI225':NI225, 'SP500':SP500, 'Pl':Pl, 'Gc':Gc, 'Si':Si, 'Hg':Hg, 'Ng':Ng}
-    for f in futures_dic:
-        futures_dic[f]["date"] = futures_dic[f]["date"].apply(split2yyyymmdd)
-
-    all_days = pd.read_csv('./stock_clean/2330 台積電.csv', usecols = ['date'])
-    merge_NI225 = pd.merge(all_days, NI225, on='date', how='left')
-    merge_SP500 = pd.merge(merge_NI225, SP500, on='date', how='left')
-    merge_Pl = pd.merge(merge_SP500, Pl, on='date', how='left')
-    merge_Gc = pd.merge(merge_Pl, Gc, on='date', how='left')
-    merge_Si = pd.merge(merge_Gc, Si, on='date', how='left')
-    merge_Hg = pd.merge(merge_Si, Hg, on='date', how='left')
-    merge_Ng = pd.merge(merge_Hg, Ng, on='date', how='left')
-    futures = merge_Ng.sort_values(by=['date']).reset_index(drop=True)
-
-    values_list = [key for key in futures_dic]
-    change_list = ['{}_change'.format(value) for value in values_list]
-    change_list = list(zip(values_list, change_list))
-    for value in values_list:
-        futures[value].fillna(method='ffill', inplace=True)
-    for value, change in change_list:
-        futures[change] = futures[change].apply(transpercent2num)
-        temp_change = (futures[value] - futures[value].shift(1)) * 100 / futures[value].shift(1)
-        futures[change].fillna(temp_change.round(2), inplace=True)
-    futures = futures[futures.date <= 20191231]
-    return futures
-
-def Shanghai_shares():
-    SSEC = pd.read_csv('./shi/上證指數.csv', thousands = ",")
-    SSEC = SSEC.rename(columns={"日期": "date", "收盘": "SSEC_close", "开盘": "SSEC_open", "高": "SSEC_high", "低": "SSEC_low",
-                                "涨跌幅": "SSEC_change"}).drop(columns='交易量')
-
-    SPCITIC50 = pd.read_csv('./shi/中信標普50.csv', thousands=",")
-    SPCITIC50 = SPCITIC50.rename(columns={"日期": "date", "收盘": "SPCITIC50_close", "开盘": "SPCITIC50_open", "高": "SPCITIC50_high", "低": "SPCITIC50_low",
-                                          "涨跌幅": "SPCITIC50_change"}).drop(columns='交易量')
-
-    Shanghai_shares_dic = {'SSEC':SSEC, 'SPCITIC50':SPCITIC50}
-    for s in Shanghai_shares_dic:
-        Shanghai_shares_dic[s]["date"] = Shanghai_shares_dic[s]["date"].apply(split2yyyymmdd)
+    TAIEX = pd.read_csv('./futures/TAIEX.csv')
+    TAIEX = TAIEX[['date', 'close']].rename(columns={'close':'TAIEX'})
 
     all_days = pd.read_csv('./stock_clean/2330 台積電.csv', usecols=['date'])
-    merge_SSEC = pd.merge(all_days, SSEC, on='date', how='left')
-    merge_SPCITIC50 = pd.merge(merge_SSEC, SPCITIC50, on='date', how='left')
-    shanghai_shares = merge_SPCITIC50.sort_values(by=['date']).reset_index(drop=True)
+    futures = pd.merge(all_days, futures, on='date', how='left')
+    futures = pd.merge(futures, TAIEX, on='date', how='left')
+    futures = futures.sort_values(by=['date']).reset_index(drop=True)
 
-    values_list = [column for column in shanghai_shares.columns if 'date' not in column and 'change' not in column]
+    values_list = futures.columns.tolist()
+    values_list.remove('date')
 
-    close_list =  [column for column in shanghai_shares.columns if 'close' in column]
-    change_list = [column for column in shanghai_shares.columns if 'change' in column]
-    change_list = list(zip(close_list, change_list))
+    change_list = ['{}_change'.format(value) for value in values_list]
+    change_list = list(zip(values_list, change_list))
+
     for value in values_list:
-        shanghai_shares[value].fillna(method='ffill', inplace=True)
-    for close, change in change_list:
-        shanghai_shares[change] = shanghai_shares[change].apply(transpercent2num)
-        temp_change = (shanghai_shares[close] - shanghai_shares[close].shift(1)) * 100 / shanghai_shares[close].shift(1)
-        shanghai_shares[change].fillna(temp_change.round(2), inplace=True)
-    shanghai_shares = shanghai_shares[shanghai_shares.date <= 20191231]
-    return shanghai_shares
+        futures[value].fillna(method='ffill', inplace=True)
+
+    for value, change in change_list:
+        futures[change] = (futures[value] - futures[value].shift(1)) * 100 / futures[value].shift(1)
+
+    for index in ['TAIEX', 'SP500', 'SSEC', 'Dji30']:
+        futures['{}_rank_5'.format(index)] = value_rank(futures, index, 5)
+        futures['{}_rank_10'.format(index)] = value_rank(futures, index, 10)
+        futures['{}_rank_20'.format(index)] = value_rank(futures, index, 20)
+
+        futures['{}_increase_5'.format(index)] = increase_counts(futures, index, 5)
+        futures['{}_increase_9'.format(index)] = increase_counts(futures, index, 9)
+    return futures
 
 def Investors(shares):
     stock = pd.read_csv('./stock_clean/{}'.format(shares))
     for price in ['high', 'low', 'close']:
         stock['{}_change'.format(price)] = (stock[price] - stock[price].shift(1)) * 100 / stock[price].shift(1)
         stock['{}_change_class'.format(price)] = stock['{}_change'.format(price)].apply(transchange2class).astype(object)
+        stock['{}_diff'.format(price)] = stock[price] - stock[price].shift(1)
     stock['close_change_class3'] = stock.close_change.apply(transclose2class3).astype(object)
+
     TA_processing(stock)
-
-    stock['close_rank_5'] = value_rank(stock, 'close', 5)
-    stock['close_rank_10'] = value_rank(stock, 'close', 10)
-    stock['close_rank_20'] = value_rank(stock, 'close', 20)
-
-    stock['high_rank_5'] = value_rank(stock, 'high', 5)
-    stock['high_rank_10'] = value_rank(stock, 'high', 10)
-    stock['high_rank_20'] = value_rank(stock, 'high', 20)
-
-    stock['low_rank_5'] = value_rank(stock, 'low', 5)
-    stock['low_rank_10'] = value_rank(stock, 'low', 10)
-    stock['low_rank_20'] = value_rank(stock, 'low', 20)
-
-    stock['close_increase_4'] = increase_counts(stock, 'close', 4)
-    stock['close_increase_9'] = increase_counts(stock, 'close', 9)
 
     stock['close_u'] = stock.close > stock.close.shift(1)
     stock['close_e'] = stock.close == stock.close.shift(1)
@@ -295,14 +265,13 @@ def Investors(shares):
     for key in columns_dic:
         merge_table[columns_dic[key]].fillna(0, inplace=True)
 
-    merge_table['trust_diff_rank_5'] = value_rank(merge_table, 'trust_diff', 5)
-    merge_table['trust_diff_increase_4'] = increase_counts(merge_table, 'trust_diff', 4)
+    for index in ['close', 'high', 'low', 'trust_diff', 'dealer_diff', 'foreign_diff']:
+        merge_table['{}_rank_5'.format(index)] = value_rank(merge_table, index, 5)
+        merge_table['{}_rank_10'.format(index)] = value_rank(merge_table, index, 10)
+        merge_table['{}_rank_20'.format(index)] = value_rank(merge_table, index, 20)
 
-    merge_table['dealer_diff_rank_5'] = value_rank(merge_table, 'dealer_diff', 5)
-    merge_table['dealer_diff_increase_4'] = increase_counts(merge_table, 'dealer_diff', 4)
-
-    merge_table['foreign_diff_rank_5'] = value_rank(merge_table, 'foreign_diff', 5)
-    merge_table['foreign_diff_increase_4'] = increase_counts(merge_table, 'foreign_diff', 4)
+        merge_table['{}_increase_5'.format(index)] = increase_counts(merge_table, index, 5)
+        merge_table['{}_increase_9'.format(index)] = increase_counts(merge_table, index, 9)
     return merge_table
 
 def stock_margin(shares):
@@ -312,14 +281,16 @@ def stock_margin(shares):
     balance = pd.read_csv('./securities_margin/{}'.format(shares), thousands=",")
     balance = balance.drop(columns=['股票代號', '股票名稱', 'margin_quota', 'short_sale','short_quota', '註記'], axis=1)
 
-    balance['cash_balance_tiff'] = balance.cash_balance - balance.cash_balance.shift(1)
-    balance['stock_balance_tiff'] = balance.stock_balance - balance.stock_balance.shift(1)
+    balance['cash_balance_diff'] = balance.cash_balance - balance.cash_balance.shift(1)
+    balance['stock_balance_diff'] = balance.stock_balance - balance.stock_balance.shift(1)
 
-    balance['cash_balance_tiff_rank_5'] = value_rank(balance, 'cash_balance_tiff', 5)
-    balance['cash_balance_tiff_increase_4'] = increase_counts(balance, 'cash_balance_tiff', 4)
+    for index in ['cash_balance_diff', 'stock_balance_diff']:
+        balance['{}_rank_5'.format(index)] = value_rank(balance, index, 5)
+        balance['{}_rank_10'.format(index)] = value_rank(balance, index, 10)
+        balance['{}_rank_20'.format(index)] = value_rank(balance, index, 20)
 
-    balance['stock_balance_tiff_rank_5'] = value_rank(balance, 'stock_balance_tiff', 5)
-    balance['stock_balance_tiff_increase_4'] = increase_counts(balance, 'stock_balance_tiff', 4)
+        balance['{}_increase_5'.format(index)] = increase_counts(balance, index, 5)
+        balance['{}_increase_9'.format(index)] = increase_counts(balance, index, 9)
 
     balance['cash_balance_u'] = balance.cash_balance > balance.cash_balance.shift(1)
     balance['cash_balance_d'] = balance.cash_balance <= balance.cash_balance.shift(1)
@@ -329,7 +300,6 @@ def stock_margin(shares):
     all_days = pd.read_csv('./stock_clean/{}'.format(shares), usecols=['date'])
     merge_short_sales = pd.merge(all_days, short_sales, on='date', how='left')
     merge_balance = pd.merge(merge_short_sales, balance, on='date', how='left')
-    merge_balance = merge_balance[merge_balance.date <= 20191231]
     return merge_balance
 
 def merge_date(shares):
@@ -339,92 +309,287 @@ def merge_date(shares):
                               'cash_balance_u', 'cash_balance_d',
                               'stock_balance_u', 'stock_balance_d'], inplace=True)
     merge_table = merge_table.mask(merge_table.astype(object).eq('None')).dropna().reset_index(drop=True)
-
-    merge_table = pd.merge(merge_table, Shanghai_shares(), on='date', how='left')
-    merge_table = pd.merge(merge_table, futures(), on='date', how='left')
-    merge_table = merge_table[merge_table.date <= 20191213]
     return merge_table
 
 def output_data():
-    stock_name = []
-    close_means = []
-    close_stds = []
-    high_means = []
-    high_stds = []
-    low_means = []
-    low_stds = []
-    close_change_means = []
-    close_change_stds = []
-    high_change_means = []
-    high_change_stds = []
-    low_change_means = []
-    low_change_stds = []
+    if not os.path.isdir("./class_training"):
+        os.mkdir("./class_training")
 
+    z_df = pd.DataFrame()
+    futures = futures_FX_index()
     for shares in sorted(os.listdir('./stock_clean/')):
         if not shares.startswith('.'):
-            df = merge_date(shares).round(4)
+            df = pd.merge(merge_date(shares).round(4), futures, on='date', how='left')
             dirname = shares.split('.')[0]
-
-            stock_name.append(dirname)
-            close_means.append(df.close.mean())
-            close_stds.append(df.close.std())
-            high_means.append(df.high.mean())
-            high_stds.append(df.high.std())
-            low_means.append(df.low.mean())
-            low_stds.append(df.low.std())
-            close_change_means.append(df.close_change.mean())
-            close_change_stds.append(df.close_change.std())
-            high_change_means.append(df.high_change.mean())
-            high_change_stds.append(df.high_change.std())
-            low_change_means.append(df.low_change.mean())
-            low_change_stds.append(df.low_change.std())
 
             ycatego = ['high_change_class', 'low_change_class',
                        'close_change_class', 'close_change_class3']
-            xcatego = ['close_rank_5', 'close_rank_10', 'close_rank_20',
-                       'high_rank_5', 'high_rank_10', 'high_rank_20',
-                       'low_rank_5', 'low_rank_10', 'low_rank_20',
-                       'close_increase_4', 'close_increase_9',
-                       'trust_diff_rank_5', 'trust_diff_increase_4',
-                       'dealer_diff_rank_5', 'dealer_diff_increase_4',
-                       'foreign_diff_rank_5', 'foreign_diff_increase_4',
-                       'cash_balance_tiff_rank_5', 'cash_balance_tiff_increase_4',
-                       'stock_balance_tiff_rank_5', 'stock_balance_tiff_increase_4',
-                       'p_vol_pair', 'p_bal_pair']
+
+            x_var = ['close', 'high', 'low',
+                     'trust_diff', 'dealer_diff', 'foreign_diff',
+                     'cash_balance_diff', 'stock_balance_diff',
+                     'TAIEX', 'SP500', 'SSEC', 'Dji30']
+            x_cls = ['rank_5', 'rank_10', 'rank_20', 'increase_5', 'increase_9']
+            xcatego = ['{}_{}'.format(var, cls) for var in x_var for cls in x_cls]
+            xcatego = xcatego + ['p_vol_pair', 'p_bal_pair']
+
+            ti = ['BIAS3', 'BIAS6', 'BIAS10','BIAS25', 'EMA5', 'EMA10', 'EMA20',
+                  'ROC', 'MACD', 'MACD_signal','UBBANDS', 'MBBANDS', 'LBBANDS',
+                  '%K', '%D', 'W%R', 'RSI9', 'RSI14','CCI', 'CDP', 'AH', 'NH',
+                  'NL', 'AL', 'MOM', 'DX', 'PSY', 'VR', 'OBV']
+
             not_z = ['date'] + ycatego + xcatego
 
+            z_dic = {'stock_name':[dirname]}
             for column in df.columns:
                 if column not in not_z:
+                    z_dic['{}_means'.format(column)] = df[column].mean()
+                    z_dic['{}_stds'.format(column)] = df[column].std()
                     if df[column].std() != 0:
                         df[column] = (df[column] - df[column].mean()) / df[column].std()
                     else:
                         print(shares, column, df[column].std())
 
-            # os.mkdir("./class_training/{}".format(dirname))
+            z_df = pd.DataFrame(z_dic) if z_df.empty else pd.concat([z_df, pd.DataFrame(z_dic)], ignore_index=True)
+
+            if not os.path.isdir("./class_training"):
+                os.mkdir("./class_training")
+
+            if not os.path.isdir("./class_training/{}".format(dirname)):
+                os.mkdir("./class_training/{}".format(dirname))
+
             cum = 0
-            naive_df = df[['date'] + xcatego]
             cum_df = df[['date'] + xcatego]
             for column in xcatego:
                 cum_df[column] = cum_df[column].astype(int).apply(lambda num: num+cum)
                 cum += cum_df[column].nunique()
 
-                sep_df = df[['date'] + [column]]
-                timesteps(sep_df, days=10)
-                sep_df = sep_df.mask(sep_df.astype(object).eq('None')).dropna().reset_index(drop=True)
-                sep_df.round(4).iloc[:-1].to_csv('./class_training/{}/{}.csv'.format(dirname, column), index=False)
-
-            timesteps(naive_df, days=10)
-            naive_df = naive_df.mask(naive_df.astype(object).eq('None')).dropna().reset_index(drop=True)
-            naive_df.astype(int).iloc[:-1].to_csv('./class_training/{}/origin_class.csv'.format(dirname), index=False)
+                # sep_df = df[['date'] + [column]]
+                # timesteps(sep_df, days=10)
+                # sep_df = sep_df.mask(sep_df.astype(object).eq('None')).dropna().reset_index(drop=True)
+                # sep_df.round(4).iloc[:-1].to_csv('./class_training/{}/{}.csv'.format(dirname, column), index=False)
 
             timesteps(cum_df, days=10)
             cum_df = cum_df.mask(cum_df.astype(object).eq('None')).dropna().reset_index(drop=True)
             cum_df.astype(int).iloc[:-1].to_csv('./class_training/{}/one_embed.csv'.format(dirname), index=False)
 
-            other_df = df.drop(columns=ycatego+xcatego, axis=1)
+            class_df = df[['date'] + xcatego]
+            timesteps(class_df, days=10)
+            class_df = class_df.mask(class_df.astype(object).eq('None')).dropna().reset_index(drop=True)
+            class_df.astype(int).iloc[:-1].to_csv('./class_training/{}/origin_class.csv'.format(dirname), index=False)
+
+            TI_df = df.drop(columns=ycatego + xcatego, axis=1)
+            timesteps(TI_df, days=10)
+            TI_df = TI_df.mask(TI_df.astype(object).eq('None')).dropna().reset_index(drop=True)
+            TI_df.round(4).iloc[:-1].to_csv('./class_training/{}/Tech_I.csv'.format(dirname), index=False)
+
+            other_df = df.drop(columns=ycatego + xcatego + ti, axis=1)
             timesteps(other_df, days=10)
             other_df = other_df.mask(other_df.astype(object).eq('None')).dropna().reset_index(drop=True)
-            other_df.round(4).iloc[:-1].to_csv('./class_training/{}/other.csv'.format(dirname), index=False)
+            other_df.round(4).iloc[:-1].to_csv('./class_training/{}/other(nonTI).csv'.format(dirname), index=False)
+
+            y_train = df[['date', 'high', 'low', 'close',
+                          'high_change_class', 'low_change_class',
+                          'close_change_class', 'close_change_class3',
+                          'high_change', 'low_change','close_change',
+                          'high_diff', 'low_diff','close_diff'
+                          ]].shift(periods=-1)
+            y_train = y_train.mask(y_train.astype(object).eq('None')).dropna().reset_index(drop=True)
+
+            y_train_price = y_train[['date', 'high', 'low', 'close']]
+            y_train_price.round(4).iloc[9:].to_csv('./class_training/{}/y_train_price.csv'.format(dirname), index=False)
+
+            y_train_change = y_train[['date', 'high_change', 'low_change','close_change']]
+            y_train_change.round(4).iloc[9:].to_csv('./class_training/{}/y_train_change.csv'.format(dirname), index=False)
+
+            y_train_change_class = y_train[['date', 'high_change_class', 'low_change_class', 'close_change_class','close_change_class3']]
+            y_train_change_class.astype(int).iloc[9:].to_csv('./class_training/{}/y_train_change_class.csv'.format(dirname),index=False)
+
+            y_train_diff = y_train[['date', 'high_diff', 'low_diff', 'close_diff']]
+            y_train_diff.astype(int).iloc[9:].to_csv('./class_training/{}/y_train_diff.csv'.format(dirname),index=False)
+
+            y_count = pd.DataFrame({'rank':list(range(7))})
+            for column in ['high_change_class', 'low_change_class', 'close_change_class', 'close_change_class3']:
+                change_class = pd.DataFrame({'rank':list(y_train_change_class[column].value_counts().sort_index().index),
+                                             '{}'.format(column):list(y_train_change_class[column].value_counts().sort_index())})
+                y_count = pd.merge(y_count, change_class, on='rank', how='left')
+            y_count.fillna(0, inplace=True)
+            y_count.astype(int).to_csv('./class_training/{}/change_class.csv'.format(dirname), index=False)
+            print(dirname, '已完成')
+    z_df.to_csv('./class_training/Z_data.csv', index=False)
+
+def output_gandata():
+    if not os.path.isdir("./gan"):
+        os.mkdir("./gan")
+
+    z_df = pd.DataFrame()
+    futures = futures_FX_index()
+    for shares in sorted(os.listdir('./stock_clean/')):
+        if not shares.startswith('.'):
+            df = pd.merge(merge_date(shares).round(4), futures, on='date', how='left')
+            dirname = shares.split('.')[0]
+
+
+            ycatego = ['high_change_class', 'low_change_class',
+                       'close_change_class', 'close_change_class3']
+
+            x_var = ['close', 'high', 'low',
+                     'trust_diff', 'dealer_diff', 'foreign_diff',
+                     'cash_balance_diff', 'stock_balance_diff',
+                     'TAIEX', 'SP500', 'SSEC', 'Dji30']
+            x_cls = ['rank_5', 'rank_10', 'rank_20', 'increase_5', 'increase_9']
+            xcatego = ['{}_{}'.format(var, cls) for var in x_var for cls in x_cls]
+            xcatego = xcatego + ['p_vol_pair', 'p_bal_pair']
+
+            not_z = ['date'] + ycatego + xcatego
+
+            z_dic = {'stock_name':[dirname]}
+            for column in df.columns:
+                if column not in not_z:
+                    z_dic['{}_means'.format(column)] = df[column].mean()
+                    z_dic['{}_stds'.format(column)] = df[column].std()
+                    if df[column].std() != 0:
+                        df[column] = (df[column] - df[column].mean()) / df[column].std()
+                    else:
+                        print(shares, column, df[column].std())
+
+            z_df = pd.DataFrame(z_dic) if z_df.empty else pd.concat([z_df, pd.DataFrame(z_dic)], ignore_index=True)
+
+            g_time = 1
+            steps = 8
+
+            if not os.path.isdir("./gan"):
+                os.mkdir("./gan")
+
+            if not os.path.isdir("./gan/{}".format(dirname)):
+                os.mkdir("./gan/{}".format(dirname))
+
+            class_df = df[['date'] + xcatego]
+            timesteps(class_df, days=steps)
+            class_df = class_df.mask(class_df.astype(object).eq('None')).dropna().reset_index(drop=True)
+            class_df.astype(int).iloc[:-g_time].to_csv('./gan/{}/origin_class.csv'.format(dirname), index=False)
+
+            other_df = df.drop(columns=ycatego+xcatego, axis=1)
+            timesteps(other_df, days=steps)
+            other_df = other_df.mask(other_df.astype(object).eq('None')).dropna().reset_index(drop=True)
+            other_df.round(4).iloc[:-g_time].to_csv('./gan/{}/other.csv'.format(dirname), index=False)
+
+            features = ['date', 'open', 'high', 'low', 'close',
+                        'high_diff', 'low_diff', 'close_diff']
+            x_train_chosen = df[features]
+            timesteps(x_train_chosen, days=steps)
+            x_train_chosen = x_train_chosen.mask(x_train_chosen.astype(object).eq('None')).dropna().reset_index(drop=True)
+            x_train_chosen.round(4).iloc[:-g_time].to_csv('./gan/{}/x_train_chosen.csv'.format(dirname), index=False)
+
+            y_train = df[features].shift(periods=-g_time)
+            y_train = y_train.mask(y_train.astype(object).eq('None')).dropna().reset_index(drop=True)
+            y_train.round(4).iloc[steps-1:].to_csv('./gan/{}/y_train.csv'.format(dirname), index=False)
+            print(dirname, '已完成')
+
+    z_df.to_csv('./gan/Z_data.csv', index=False)
+
+def output_autodata():
+    if not os.path.isdir("./auto"):
+        os.mkdir("./auto")
+
+    z_df = pd.DataFrame()
+    futures = futures_FX_index()
+    for shares in sorted(os.listdir('./stock_clean/')):
+        if not shares.startswith('.'):
+            df = pd.merge(merge_date(shares).round(4), futures, on='date', how='left')
+            dirname = shares.split('.')[0]
+
+            for price in ['high', 'low', 'close']:
+                df['{}_change'.format(price)] = df['{}_change'.format(price)].shift(-1)
+                df['{}_change_class'.format(price)] = df['{}_change_class'.format(price)].shift(-1)
+            df = df.mask(df.astype(object).eq('None')).dropna().reset_index(drop=True)
+
+            x_var = ['close', 'high', 'low',
+                     'trust_diff', 'dealer_diff', 'foreign_diff',
+                     'cash_balance_diff', 'stock_balance_diff',
+                     'TAIEX', 'SP500', 'SSEC', 'Dji30']
+            x_cls = ['rank_5', 'rank_10', 'rank_20', 'increase_5', 'increase_9']
+            xcatego = ['{}_{}'.format(var, cls) for var in x_var for cls in x_cls]
+            xcatego = xcatego + ['p_vol_pair', 'p_bal_pair']
+            change_cls = ['high_change_class', 'low_change_class', 'close_change_class', 'close_change_class3']
+            not_z = ['date'] + xcatego + change_cls
+
+            z_dic = {'stock_name':[dirname]}
+            for column in df.columns:
+                if column not in not_z:
+                    z_dic['{}_means'.format(column)] = df[column].mean()
+                    z_dic['{}_stds'.format(column)] = df[column].std()
+                    if df[column].std() != 0:
+                        df[column] = (df[column] - df[column].mean()) / df[column].std()
+                    else:
+                        print(shares, column, df[column].std())
+
+            for column in ['high_change', 'low_change','close_change', 'high_diff', 'low_diff','close_diff']:
+                z_dic['{}_max'.format(column)] = df[column].max()
+                z_dic['{}_min'.format(column)] = df[column].min()
+                df[column] = (df[column] - df[column].min()) / (df[column].max() - df[column].min())
+
+            z_df = pd.DataFrame(z_dic) if z_df.empty else pd.concat([z_df, pd.DataFrame(z_dic)], ignore_index=True)
+
+            if not os.path.isdir("./auto"):
+                os.mkdir("./auto")
+
+            if not os.path.isdir("./auto/{}".format(dirname)):
+                os.mkdir("./auto/{}".format(dirname))
+
+            class_df = df[['date'] + xcatego + change_cls]
+            timesteps(class_df, days=10)
+            class_df = class_df.mask(class_df.astype(object).eq('None')).dropna().reset_index(drop=True)
+            class_df.astype(int).to_csv('./auto/{}/origin_class.csv'.format(dirname), index=False)
+
+            other_df = df.drop(columns = xcatego, axis=1)
+            timesteps(other_df, days=10)
+            other_df = other_df.mask(other_df.astype(object).eq('None')).dropna().reset_index(drop=True)
+            other_df.round(4).to_csv('./auto/{}/other.csv'.format(dirname), index=False)
+
+            train_change_class = other_df[change_cls]
+
+            change_count = pd.DataFrame({'rank':list(range(7))})
+            for column in change_cls:
+                change_class = pd.DataFrame({'rank':list(train_change_class[column].value_counts().sort_index().index),
+                                             '{}'.format(column):list(train_change_class[column].value_counts().sort_index())})
+                change_count = pd.merge(change_count, change_class, on='rank', how='left')
+            change_count.fillna(0, inplace=True)
+            change_count.astype(int).to_csv('./auto/{}/change_class.csv'.format(dirname), index=False)
+            print(dirname, '已完成')
+    z_df.to_csv('./auto/Z_data.csv', index=False)
+
+def output_rawdata():
+    futures = futures_FX_index()
+    for shares in sorted(os.listdir('./stock_clean/')):
+        if not shares.startswith('.'):
+            df = pd.merge(merge_date(shares).round(4), futures, on='date', how='left')
+            dirname = shares.split('.')[0]
+
+            ycatego = ['high_change_class', 'low_change_class',
+                       'close_change_class', 'close_change_class3']
+
+            x_var = ['close', 'high', 'low',
+                     'trust_diff', 'dealer_diff', 'foreign_diff',
+                     'cash_balance_diff', 'stock_balance_diff',
+                     'TAIEX', 'SP500', 'SSEC', 'Dji30']
+            x_cls = ['rank_5', 'rank_10', 'rank_20', 'increase_5', 'increase_9']
+            xcatego = ['{}_{}'.format(var, cls) for var in x_var for cls in x_cls]
+            xcatego = xcatego + ['p_vol_pair', 'p_bal_pair']
+
+            if not os.path.isdir("./training_raw"):
+                os.mkdir("./training_raw")
+
+            if not os.path.isdir("./training_raw/{}".format(dirname)):
+                os.mkdir("./training_raw/{}".format(dirname))
+
+            class_df = df[['date'] + xcatego]
+            class_df = class_df.mask(class_df.astype(object).eq('None')).dropna().reset_index(drop=True)
+            class_df.astype(int).iloc[:-1].to_csv('./training_raw/{}/origin_class.csv'.format(dirname), index=False)
+
+            other_df = df.drop(columns=ycatego+xcatego, axis=1)
+            other_df = other_df.mask(other_df.astype(object).eq('None')).dropna().reset_index(drop=True)
+            other_df.round(4).iloc[:-1].to_csv('./training_raw/{}/other.csv'.format(dirname), index=False)
 
             y_train = df[['date', 'high', 'low', 'close',
                           'high_change_class', 'low_change_class',
@@ -434,13 +599,13 @@ def output_data():
             y_train = y_train.mask(y_train.astype(object).eq('None')).dropna().reset_index(drop=True)
 
             y_train_price = y_train[['date', 'high', 'low', 'close']]
-            y_train_price.round(4).to_csv('./class_training/{}/y_train_price.csv'.format(dirname), index=False)
+            y_train_price.round(4).to_csv('./training_raw/{}/y_train_price.csv'.format(dirname), index=False)
 
             y_train_change = y_train[['date', 'high_change', 'low_change','close_change']]
-            y_train_change.round(4).to_csv('./class_training/{}/y_train_change.csv'.format(dirname), index=False)
+            y_train_change.round(4).to_csv('./training_raw/{}/y_train_change.csv'.format(dirname), index=False)
 
             y_train_change_class = y_train[['date', 'high_change_class', 'low_change_class', 'close_change_class','close_change_class3']]
-            y_train_change_class.astype(int).to_csv('./class_training/{}/y_train_change_class.csv'.format(dirname),
+            y_train_change_class.astype(int).to_csv('./training_raw/{}/y_train_change_class.csv'.format(dirname),
                                                  index=False)
 
             y_count = pd.DataFrame({'rank':list(range(7))})
@@ -449,115 +614,75 @@ def output_data():
                                              '{}'.format(column):list(y_train_change_class[column].value_counts().sort_index())})
                 y_count = pd.merge(y_count, change_class, on='rank', how='left')
             y_count.fillna(0, inplace=True)
-            y_count.astype(int).to_csv('./class_training/{}/change_class.csv'.format(dirname), index=False)
+            y_count.astype(int).to_csv('./training_raw/{}/change_class.csv'.format(dirname), index=False)
+            print(dirname, '已完成')
 
-    Z_data = {'stock_name': stock_name,
-              'close_means': close_means,
-              'close_stds': close_stds,
-              'high_means': high_means,
-              'high_stds': high_stds,
-              'low_means': low_means,
-              'low_stds': low_stds,
-              'close_change_means': close_change_means,
-              'close_change_stds': close_change_stds,
-              'high_change_means': high_change_means,
-              'high_change_stds': high_change_stds,
-              'low_change_means': low_change_means,
-              'low_change_stds': low_change_stds
-              }
-    pd.DataFrame(Z_data).to_csv('./class_training/Z_data.csv', index=False)
+def output_TAIEXdata():
+    df = futures_FX_index().round(4)
+    df = df.mask(df.astype(object).eq('None')).dropna().reset_index(drop=True)
+    df['TAIEX_change_class'] = df.TAIEX_change.apply(TAIEX2class).astype(object)
+    df['TAIEX_change_class3'] = df.TAIEX_change.apply(TAIEX2class3).astype(object)
 
-def output_autodata():
-    stock_name = []
-    close_means = []
-    close_stds = []
-    high_means = []
-    high_stds = []
-    low_means = []
-    low_stds = []
-    close_change_means = []
-    close_change_stds = []
-    high_change_means = []
-    high_change_stds = []
-    low_change_means = []
-    low_change_stds = []
+    x_var = ['TAIEX', 'SP500', 'Dji30']
+    x_cls = ['rank_5', 'rank_10','rank_20','increase_5', 'increase_9']
+    xcatego = ['{}_{}'.format(var, cls) for var in x_var for cls in x_cls]
 
-    for shares in sorted(os.listdir('./stock_clean/')):
-        if not shares.startswith('.'):
-            df = merge_date(shares).round(4)
-            dirname = shares.split('.')[0]
+    x_change = ['{}_change'.format(var) for var in x_var]
+    x_var = x_var + x_change
 
-            stock_name.append(dirname)
-            close_means.append(df.close.mean())
-            close_stds.append(df.close.std())
-            high_means.append(df.high.mean())
-            high_stds.append(df.high.std())
-            low_means.append(df.low.mean())
-            low_stds.append(df.low.std())
-            close_change_means.append(df.close_change.mean())
-            close_change_stds.append(df.close_change.std())
-            high_change_means.append(df.high_change.mean())
-            high_change_stds.append(df.high_change.std())
-            low_change_means.append(df.low_change.mean())
-            low_change_stds.append(df.low_change.std())
+    ycatego = ['TAIEX_change_class', 'TAIEX_change_class3']
+    not_z = ['date'] + ycatego + xcatego
 
-            for price in ['high', 'low', 'close']:
-                df['{}_change'.format(price)] = df['{}_change'.format(price)].shift(-1)
-                df['{}_change_class'.format(price)] = df['{}_change_class'.format(price)].shift(-1)
+    df = df[['date'] + x_var + xcatego + ycatego]
+    for column in df.columns:
+        if column not in not_z:
+            if df[column].std() != 0:
+                df[column] = (df[column] - df[column].mean()) / df[column].std()
+            else:
+                print(column, df[column].std())
 
-            catego = ['high_change_class', 'low_change_class',
-                      'close_change_class', 'close_change_class3',
-                      'close_rank_5', 'close_rank_10', 'close_rank_20',
-                      'high_rank_5', 'high_rank_10', 'high_rank_20',
-                      'low_rank_5', 'low_rank_10', 'low_rank_20',
-                      'close_increase_4', 'close_increase_9',
-                      'trust_diff_rank_5', 'trust_diff_increase_4',
-                      'dealer_diff_rank_5', 'dealer_diff_increase_4',
-                      'foreign_diff_rank_5', 'foreign_diff_increase_4',
-                      'cash_balance_tiff_rank_5', 'cash_balance_tiff_increase_4',
-                      'stock_balance_tiff_rank_5', 'stock_balance_tiff_increase_4',
-                      'p_vol_pair', 'p_bal_pair']
-            not_z = ['date'] + catego
+    if not os.path.isdir("./TAIEX"):
+        os.mkdir("./TAIEX")
 
-            for column in df.columns:
-                if column not in not_z:
-                    if df[column].std() != 0:
-                        df[column] = (df[column] - df[column].mean()) / df[column].std()
-                    else:
-                        print(shares, column, df[column].std())
+    cum = 0
+    cum_df = df[['date'] + xcatego]
+    for column in xcatego:
+        cum_df[column] = cum_df[column].astype(int).apply(lambda num: num + cum)
+        cum += cum_df[column].nunique()
 
-            total_data = df.mask(df.astype(object).eq('None')).dropna().reset_index(drop=True)
-            train_change_class = total_data[['date', 'high_change_class', 'low_change_class', 'close_change_class','close_change_class3']]
+    timesteps(cum_df, days=5)
+    cum_df = cum_df.mask(cum_df.astype(object).eq('None')).dropna().reset_index(drop=True)
+    cum_df.astype(int).iloc[:-1].to_csv('./TAIEX/one_embed.csv', index=False)
 
-            change_count = pd.DataFrame({'rank':list(range(7))})
-            for column in ['high_change_class', 'low_change_class', 'close_change_class', 'close_change_class3']:
-                change_class = pd.DataFrame({'rank':list(train_change_class[column].value_counts().sort_index().index),
-                                             '{}'.format(column):list(train_change_class[column].value_counts().sort_index())})
-                change_count = pd.merge(change_count, change_class, on='rank', how='left')
-            change_count.fillna(0, inplace=True)
+    timesteps(df, days=5)
+    df = df.mask(df.astype(object).eq('None')).dropna().reset_index(drop=True)
+    x_train = df[['date'] + x_var]
+    x_train.round(4).iloc[:-1].to_csv('./TAIEX/x_train.csv', index=False)
 
-            os.mkdir("./auto/{}".format(dirname))
-            total_data.round(4).iloc[:-1].to_csv('./auto/{}/x_train.csv'.format(dirname), index=False)
-            change_count.astype(int).to_csv('./auto/{}/change_class.csv'.format(dirname), index=False)
+    y_train = df[['date', 'TAIEX_change'] + ycatego].shift(periods=-1)
+    y_train = y_train.mask(y_train.astype(object).eq('None')).dropna().reset_index(drop=True)
+    y_train.round(4).to_csv('./TAIEX/y_train.csv', index=False)
 
-    Z_data = {'stock_name': stock_name,
-              'close_means': close_means,
-              'close_stds': close_stds,
-              'high_means': high_means,
-              'high_stds': high_stds,
-              'low_means': low_means,
-              'low_stds': low_stds,
-              'close_change_means': close_change_means,
-              'close_change_stds': close_change_stds,
-              'high_change_means': high_change_means,
-              'high_change_stds': high_change_stds,
-              'low_change_means': low_change_means,
-              'low_change_stds': low_change_stds
-              }
-    pd.DataFrame(Z_data).to_csv('./auto/Z_data.csv', index=False)
+    y_count = pd.DataFrame({'rank':list(range(7))})
+    for column in ycatego:
+        change_class = pd.DataFrame({'rank':list(y_train[column].value_counts().sort_index().index),
+                                     '{}'.format(column):list(y_train[column].value_counts().sort_index())})
+        y_count = pd.merge(y_count, change_class, on='rank', how='left')
+    y_count.fillna(0, inplace=True)
+    y_count.astype(int).to_csv('./TAIEX/change_class.csv', index=False)
+    print('TAIEX已完成')
 
 if __name__ == '__main__':
-    # Investors('2330 台積電.csv')
-    # merge_date('2302 麗正.csv')
+    # d = stock50.Daily_trade_data()
+    # d.update_data()
+    # TAI = stock50.TAIEX()
+    # TAI.update_data()
+    # crawler_investor.crawler_and_update()
+    # crawler_margin.crawler_and_update()
+    # crawler_margin_financing.crawler_and_update()
+    # crawler_futures.update_futures()
     # output_data()
-    output_autodata()
+    output_gandata()
+    # output_autodata()
+    # output_rawdata()
+    # output_TAIEXdata()

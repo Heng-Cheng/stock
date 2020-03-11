@@ -2,6 +2,7 @@ import requests
 import datetime
 import time
 import os
+import margin_clean
 
 def split_yyyymmdd(yyyymmdd):
   date = str(yyyymmdd)
@@ -65,7 +66,7 @@ def makedir(date):
     else:
         pass
 
-def crawler():
+def crawler_and_update():
     if not os.path.exists("./Short Sales/2008/09"):
         date = 20080926
     else:
@@ -84,10 +85,11 @@ def crawler():
             with open(filename, 'w', encoding = "utf-8") as f:
                 f.write(response.text)
             print('{}已下載完畢'.format(filename))
-            time.sleep(7)
+            margin_clean.update_short_sale(date)
+            time.sleep(5)
         else:
             print('{}無資料'.format(date))
         date = next_day(date)
 
 if __name__ == '__main__':
-    crawler()
+    crawler_and_update()

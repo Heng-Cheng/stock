@@ -72,6 +72,15 @@ def Create_margin_table():
             print('無{}資料'.format(date))
         date = crawler_investor.next_day(date)
 
+def update_margin(date):
+    yyyy, mm, dd = crawler_investor.split_yyyymmdd(date)
+    file = "./Margin_financing/{}/{} month/{}.csv".format(yyyy, mm, date)
+    if os.path.exists(file):
+        margin_write_in_csv(Margin(date))
+        print('{}已完成'.format(date))
+    else:
+        print('無{}資料'.format(date))
+
 def Short_sales(date):
     yyyy, mm, dd = crawler_investor.str_yyyy_mm_dd(date)
     df = pd.read_csv("./Short Sales/{}/{}/{}.csv".format(yyyy, mm, date), header=1, engine='python')
@@ -118,6 +127,15 @@ def Create_Short_Sale_table():
         else:
             print('無{}資料'.format(date))
         date = crawler_investor.next_day(date)
+
+def update_short_sale(date):
+    yyyy, mm, dd = crawler_investor.str_yyyy_mm_dd(date)
+    file = "./Short Sales/{}/{}/{}.csv".format(yyyy, mm, date)
+    if os.path.exists(file):
+        short_sale_write_in_csv(Short_sales(date))
+        print('{}已完成'.format(date))
+    else:
+        print('無{}資料'.format(date))
 
 if __name__ == '__main__':
     Create_Short_Sale_table()

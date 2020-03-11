@@ -136,7 +136,7 @@ def write_in_csv(dataframe):
                 writer.writerow(dataframe.iloc[i])
 
 def Create_merge_table():
-    date = 20191221
+    date = 20200107
     end_day = int(datetime.date.today().strftime("%Y%m%d"))
     while date <= end_day:
         yyyy, mm, dd = crawler_investor.str_yyyy_mm_dd(date)
@@ -150,6 +150,18 @@ def Create_merge_table():
         else:
             print('無{}資料'.format(date))
         date = crawler_investor.next_day(date)
+
+def update_investor(date):
+    yyyy, mm, dd = crawler_investor.str_yyyy_mm_dd(date)
+    file1 = './Trust/{}/{}/{}.csv'.format(yyyy, mm, date)
+    file2 = './Dealers/{}/{}/{}.csv'.format(yyyy, mm, date)
+    file3 = './Foriegn/{}/{}/{}.csv'.format(yyyy, mm, date)
+    if os.path.exists(file1) and os.path.exists(file2) and os.path.exists(file3):
+        total_table = Merge_data(date)
+        write_in_csv(total_table)
+        print('{}已完成'.format(date))
+    else:
+        print('無{}資料'.format(date))
 
 if __name__ == '__main__':
     Create_merge_table()
