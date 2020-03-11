@@ -8,21 +8,26 @@ import crawler_margin_financing
 import crawler_futures
 import stock50
 
+# 定義移動平均
 def sma(series, d):
     return series.rolling(d, min_periods = d).mean()
 
+# 定義lag變數
 def lag_n(dataframe, variable, d):
     dataframe['{}_{}'.format(variable, d)] = dataframe['{}'.format(variable)].shift(periods = d)
 
+# 定義指數移動平均
 def moving_average(dataframe, days = [5, 10, 20]):
     for d in days:
         dataframe['EMA{}'.format(d)] = abstract.EMA(dataframe, timeperiod = d)
 
+# 定義乖離率
 def bias(dataframe, days = [3, 6, 10, 25]):
     series = dataframe['close']
     for d in days:
         dataframe['BIAS{}'.format(d)] = (series - sma(series, d)) * 100 / sma(series, d)
 
+# 定義逆勢操作指標
 def counter_daily_potential(dataframe):
     dataframe['CDP'] = (dataframe['high'] + dataframe['low'] + dataframe['close'] * 2)/4
     PT = dataframe['high'] - dataframe['low']
@@ -31,10 +36,12 @@ def counter_daily_potential(dataframe):
     dataframe['NL'] = dataframe['CDP'] * 2 - dataframe['high']
     dataframe['AL'] = dataframe['CDP'] - PT
 
+# 定義心理線
 def psy_line(dataframe, d = 12):
     days = dataframe['close'] > dataframe['close'].shift(periods = 1)
     dataframe['PSY'] = days.rolling(d, min_periods = d).mean()
 
+# 定義成交量比率
 def volumn_ratio(dataframe, d = 26):
     u_days = dataframe['close'] > dataframe['close'].shift(periods=1)
     p_days = dataframe['close'] == dataframe['close'].shift(periods=1)
@@ -44,10 +51,13 @@ def volumn_ratio(dataframe, d = 26):
     d_volumns = dataframe['volume'].multiply(d_days.astype(int)).rolling(d, min_periods = d).sum()
     dataframe['VR'] = (u_volumns + p_volumns * 0.5)/(d_volumns + p_volumns * 0.5)
 
+# 定義能量槽指標
 def on_balance_volume(dataframe):
     rsv_1 = (dataframe['close'] - dataframe['low'])/(dataframe['high'] - dataframe['low'])
     dataframe['OBV'] = dataframe['volume'].multiply(rsv_1)
 
+# 聯合技術指標群
+# 乖離率、移動平均、變動率指標、MACD、布林通道、KD指標、威廉指標、相對強弱指數、順勢指標、逆勢操作指標、動量指標、趨向指標
 def TA_processing(dataframe):
     bias(dataframe, days=[3, 6, 10, 25])
     moving_average(dataframe, days=[5, 10, 20])
@@ -70,6 +80,7 @@ def TA_processing(dataframe):
     volumn_ratio(dataframe, d=26)
     on_balance_volume(dataframe)
 
+# 定義lag變數，天數照時間先後排序。
 def timesteps(dataframe, days = 20):
     notimesteps = ['date', 'high_change_class', 'low_change_class', 'close_change_class', 'close_change_class3']
     features = [column for column in dataframe.columns if column not in notimesteps]
@@ -81,6 +92,7 @@ def timesteps(dataframe, days = 20):
         dataframe.drop(columns=['{}'.format(var)], inplace=True)
         dataframe['{}'.format(var)] = temp
 
+# 定義當日數值在過去n天的排序。
 def value_rank(dataframe, var, d):
     date = dataframe.date.iloc[d-1:].reset_index(drop=True)
     rank_list = [dataframe[var].iloc[i:d + i].rank(method='min', ascending = False).iloc[-1] for i in range(len(dataframe)-(d-1))]
@@ -88,6 +100,7 @@ def value_rank(dataframe, var, d):
     concat_rank = pd.concat([date, rank], axis=1)
     return pd.merge(dataframe, concat_rank, on='date', how='left')['rank']
 
+# 定義過去n天漲跌次數多寡的排序。
 def increase_counts(dataframe, var, d):
     date = dataframe.date.iloc[d-1:].reset_index(drop=True)
     increase_days = (dataframe[var] > dataframe[var].shift(1)).astype(int)
@@ -97,6 +110,7 @@ def increase_counts(dataframe, var, d):
     concat_increase = pd.concat([date, rank], axis=1)
     return pd.merge(dataframe, concat_increase, on='date', how='left')['increase']
 
+# 定義價量交互作用指標。
 def p_vol_compare(dataframe):
     if dataframe.close_u is True and dataframe.volume_u is True:
         return '1'
@@ -109,6 +123,7 @@ def p_vol_compare(dataframe):
     elif dataframe.close_d is True and dataframe.volume_ed is True:
         return "5"
 
+# 定義價與融資融券餘額交互作用指標。
 def p_bal_compare(dataframe):
     if dataframe.close_u is True and dataframe.cash_balance_u is True and dataframe.stock_balance_u is True:
         return '1'
@@ -129,6 +144,7 @@ def p_bal_compare(dataframe):
     elif dataframe.close_d is True and dataframe.cash_balance_d is True and dataframe.stock_balance_d is True:
         return "9"
 
+# 定義時間格式轉換數字函數
 def trans2yyyymmdd(date):
     yyyy = date[:4]
     mm = date[5:7]
@@ -136,6 +152,7 @@ def trans2yyyymmdd(date):
     yyyymmdd = yyyy + mm + dd
     return int(yyyymmdd)
 
+# 定義時間格式轉換文字函數
 def split2yyyymmdd(stryyyymmdd):
     yyyy = int(stryyyymmdd.replace('日', '').split('年')[0])
     mm = int(stryyyymmdd.replace('日', '').split('年')[1].split('月')[0])
@@ -144,6 +161,7 @@ def split2yyyymmdd(stryyyymmdd):
     yyyymmdd = int(date.strftime("%Y%m%d"))
     return yyyymmdd
 
+# 定義收盤價級距分類(7類)
 def transchange2class(change):
     high = 1.5
     mild = 0.4
@@ -162,6 +180,7 @@ def transchange2class(change):
     if change > high:
         return 6
 
+# 定義收盤價級距分類(3類)
 def transclose2class3(change):
     cut = 0.5
     if change < -cut:
@@ -171,6 +190,7 @@ def transclose2class3(change):
     else:
         return 1
 
+# 定義台指級距分類(7類)
 def TAIEX2class(change):
     high = 0.8
     mild = 0.4
@@ -190,6 +210,7 @@ def TAIEX2class(change):
     if change > high:
         return 6
 
+# 定義台指級距分類(3類)
 def TAIEX2class3(change):
     cut = 0.33
     if change < -cut:
@@ -199,6 +220,7 @@ def TAIEX2class3(change):
     else:
         return 1
 
+# 期貨、外匯、期指資料整理
 def futures_FX_index():
     futures = pd.read_csv('./futures/futures.csv', thousands = ",")
 
@@ -231,6 +253,7 @@ def futures_FX_index():
         futures['{}_increase_9'.format(index)] = increase_counts(futures, index, 9)
     return futures
 
+# 股價、法人買賣資料整理
 def Investors(shares):
     stock = pd.read_csv('./stock_clean/{}'.format(shares))
     for price in ['high', 'low', 'close']:
@@ -274,6 +297,7 @@ def Investors(shares):
         merge_table['{}_increase_9'.format(index)] = increase_counts(merge_table, index, 9)
     return merge_table
 
+# 融資融券餘額資料整理
 def stock_margin(shares):
     short_sales = pd.read_csv('./securities_shortsale/{}'.format(shares), thousands=",")
     short_sales = short_sales.drop(columns=['證券名稱'], axis=1)
@@ -302,6 +326,7 @@ def stock_margin(shares):
     merge_balance = pd.merge(merge_short_sales, balance, on='date', how='left')
     return merge_balance
 
+# 資料依日期合併
 def merge_date(shares):
     merge_table = pd.merge(Investors(shares), stock_margin(shares), on='date', how='left')
     merge_table['p_bal_pair'] = merge_table.apply(p_bal_compare, axis=1)
@@ -311,6 +336,7 @@ def merge_date(shares):
     merge_table = merge_table.mask(merge_table.astype(object).eq('None')).dropna().reset_index(drop=True)
     return merge_table
 
+# 輸出DNN模型所需的資料
 def output_data():
     if not os.path.isdir("./class_training"):
         os.mkdir("./class_training")
@@ -418,6 +444,7 @@ def output_data():
             print(dirname, '已完成')
     z_df.to_csv('./class_training/Z_data.csv', index=False)
 
+# 輸出GAN模型所需的資料
 def output_gandata():
     if not os.path.isdir("./gan"):
         os.mkdir("./gan")
@@ -488,6 +515,7 @@ def output_gandata():
 
     z_df.to_csv('./gan/Z_data.csv', index=False)
 
+# 輸出AUTOENCODER模型所需的資料
 def output_autodata():
     if not os.path.isdir("./auto"):
         os.mkdir("./auto")
@@ -559,6 +587,7 @@ def output_autodata():
             print(dirname, '已完成')
     z_df.to_csv('./auto/Z_data.csv', index=False)
 
+# 輸出原始資料
 def output_rawdata():
     futures = futures_FX_index()
     for shares in sorted(os.listdir('./stock_clean/')):
@@ -617,6 +646,7 @@ def output_rawdata():
             y_count.astype(int).to_csv('./training_raw/{}/change_class.csv'.format(dirname), index=False)
             print(dirname, '已完成')
 
+# 輸出台指及標普500、道瓊指數
 def output_TAIEXdata():
     df = futures_FX_index().round(4)
     df = df.mask(df.astype(object).eq('None')).dropna().reset_index(drop=True)
